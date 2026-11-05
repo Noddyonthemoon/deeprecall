@@ -144,16 +144,25 @@ export default function App() {
         }),
       });
 
-      const data = await response.json();
+      let data: any = null;
+      try {
+        const rawText = await response.text();
+        data = JSON.parse(rawText);
+      } catch (_jsonParseError) {
+        // If response is HTML from an Nginx timeout or gateway issue, handle gracefully
+        throw new Error(
+          'The AI model experienced a brief connection interruption or high traffic spike. Please try generating again in a few moments.'
+        );
+      }
 
-      if (!response.ok || !data.success) {
-        let errorText = data.error || 'Failed to generate study kit from server.';
-        if (response.status === 401 || data.isAuthError) {
+      if (!response.ok || !data?.success) {
+        let errorText = data?.error || 'Failed to generate study kit from server.';
+        if (response.status === 401 || data?.isAuthError) {
           errorText = 'Gemini API authentication failed (401). Please verify your GEMINI_API_KEY secret in the AI Studio Secrets panel.';
         }
         setErrorMessage({
           text: errorText,
-          isRateLimit: data.isRateLimit,
+          isRateLimit: data?.isRateLimit,
         });
         setIsGenerating(false);
         return;
@@ -166,8 +175,12 @@ export default function App() {
       await handleOpenChapter(savedDoc);
     } catch (err: any) {
       console.error('Generation network error:', err);
+      let errorMsg = err?.message || 'Network error communicating with the generation server.';
+      if (errorMsg.includes('match the expected pattern') || errorMsg.includes('Unexpected token')) {
+        errorMsg = 'The AI model is experiencing a temporary spike in traffic. Spikes are brief — please click Generate again in a few moments.';
+      }
       setErrorMessage({
-        text: err.message || 'Network error communicating with the generation server.',
+        text: errorMsg,
       });
     } finally {
       setIsGenerating(false);

@@ -64,9 +64,8 @@ apiRouter.post('/generate', async (req: Request, res: Response) => {
     const isRateLimit = message.includes('free-tier limit') || message.includes('quota') || message.includes('429');
     const is401 = message.includes('401') || message.includes('authentication') || error?.status === 401;
 
-    const statusCode = is401 ? 401 : isRateLimit ? 429 : 500;
-
-    res.status(statusCode).json({
+    // Return status 200 with success: false so Nginx proxy never intercepts with an HTML error/warmup page
+    res.status(200).json({
       success: false,
       error: message,
       isAuthError: is401,
