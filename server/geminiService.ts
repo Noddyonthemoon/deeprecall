@@ -194,30 +194,35 @@ function getCountsForDepth(depth: DepthSetting) {
 }
 
 /**
- * Exponential backoff wrapper for 429 rate-limiting resilience
+ * Exponential backoff wrapper with retry for 429, 503, and transient network errors
  */
-async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 3, initialDelayMs = 2500): Promise<T> {
+async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 2, initialDelayMs = 1500): Promise<T> {
   let delay = initialDelayMs;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (err: any) {
-      const is429 =
+      const isRetryable =
         err?.status === 429 ||
+        err?.status === 503 ||
+        err?.status === 500 ||
         err?.message?.includes('429') ||
+        err?.message?.includes('503') ||
         err?.message?.includes('RESOURCE_EXHAUSTED') ||
+        err?.message?.includes('high demand') ||
+        err?.message?.includes('UNAVAILABLE') ||
         err?.message?.includes('rate limit');
 
-      if (is429 && attempt < maxRetries) {
-        console.warn(`[Gemini API] 429 rate limit encountered. Retrying in ${delay}ms (attempt ${attempt}/${maxRetries})...`);
+      if (isRetryable && attempt < maxRetries) {
+        console.warn(`[Gemini API] Transient condition (${err?.status || 'spikes/limits'}) encountered. Retrying in ${delay}ms (attempt ${attempt}/${maxRetries})...`);
         await new Promise((res) => setTimeout(res, delay));
-        delay *= 2;
+        delay *= 1.5;
         continue;
       }
       throw err;
     }
   }
-  throw new Error('Rate limit retry loop exhausted.');
+  throw new Error('Transient retry loop exhausted.');
 }
 
 export interface GenerateStudyKitParams {
@@ -256,8 +261,8 @@ Instructions:
 
   const candidateModels = [
     { name: 'gemini-3.8-flash', lowLatencyThinking: true },
-    { name: 'gemini-flash-latest', lowLatencyThinking: false },
     { name: 'gemini-3.1-flash-lite', lowLatencyThinking: false },
+    { name: 'gemini-flash-latest', lowLatencyThinking: false },
   ];
 
   let lastError: any = null;
@@ -317,6 +322,17 @@ Instructions:
   ) {
     throw new Error(
       "You've hit today's free-tier limit across available models — check your quota at https://aistudio.google.com/rate-limit"
+    );
+  }
+
+  if (
+    lastError?.status === 503 ||
+    lastError?.message?.includes('503') ||
+    lastError?.message?.includes('high demand') ||
+    lastError?.message?.includes('UNAVAILABLE')
+  ) {
+    throw new Error(
+      'The AI service is experiencing a temporary spike in traffic. Spikes typically resolve in a few seconds — please try generating again.'
     );
   }
 
