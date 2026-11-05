@@ -1,0 +1,6 @@
+{
+  "name": "NEET Deep-Recall",
+  "description": "NCERT-grounded, exam-accurate study kit generator with spaced repetition, Bloom-tagged flashcards, and authentic NEET MCQs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

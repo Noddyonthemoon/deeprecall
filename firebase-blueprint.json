@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "Chapter": {
+      "title": "Chapter",
+      "description": "NCERT chapter study kit with summaries, MCQs, and insights",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "depth": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "createdAt"]
+    },
+    "CardProgress": {
+      "title": "CardProgress",
+      "description": "SM-2 spaced repetition state for an individual flashcard",
+      "type": "object",
+      "properties": {
+        "cardId": { "type": "string" },
+        "chapterId": { "type": "string" },
+        "easeFactor": { "type": "number" },
+        "interval": { "type": "integer" },
+        "repetitions": { "type": "integer" },
+        "dueDate": { "type": "string" }
+      },
+      "required": ["cardId", "chapterId", "easeFactor", "interval", "repetitions", "dueDate"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/chapters/{chapterId}": {
+      "schema": "Chapter",
+      "description": "User NCERT chapters and study kits"
+    },
+    "/users/{userId}/chapters/{chapterId}/cards/{cardId}": {
+      "schema": "CardProgress",
+      "description": "Flashcard SM-2 review progress"
+    }
+  }
+}
