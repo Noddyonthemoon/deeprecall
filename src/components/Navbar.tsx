@@ -9,7 +9,7 @@ interface NavbarProps {
   onNavigateHome: () => void;
   onNavigateDueToday: () => void;
   onOpenSettings: () => void;
-  onSignIn: () => void;
+  onOpenAuthModal: (mode?: 'signin' | 'signup') => void;
   onSignOut: () => void;
 }
 
@@ -20,7 +20,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigateHome,
   onNavigateDueToday,
   onOpenSettings,
-  onSignIn,
+  onOpenAuthModal,
   onSignOut,
 }) => {
   return (
@@ -83,7 +83,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Zone 3: Authentication & User Actions */}
         <div className="flex items-center space-x-2">
-          {user ? (
+          {user && !user.isAnonymous ? (
             <div className="flex items-center space-x-2 text-xs">
               <div className="flex items-center space-x-1.5 text-stone-600 pl-2">
                 {user.photoURL ? (
@@ -94,11 +94,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   />
                 ) : (
                   <div className="w-6 h-6 rounded-full bg-stone-200 flex items-center justify-center text-[10px] font-medium text-stone-700">
-                    {user.isAnonymous ? 'G' : (user.email?.[0] || 'U').toUpperCase()}
+                    {(user.displayName?.[0] || user.email?.[0] || 'A').toUpperCase()}
                   </div>
                 )}
-                <span className="hidden sm:inline font-medium text-stone-700 max-w-[120px] truncate">
-                  {user.isAnonymous ? 'Guest' : (user.displayName || user.email?.split('@')[0])}
+                <span className="hidden sm:inline font-medium text-stone-800 max-w-[130px] truncate">
+                  {user.displayName || user.email?.split('@')[0]}
                 </span>
               </div>
               <button
@@ -110,12 +110,20 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
           ) : (
-            <button
-              onClick={onSignIn}
-              className="px-3 py-1.5 rounded-md text-xs font-medium bg-stone-900 hover:bg-stone-800 text-stone-100 transition shadow-sm"
-            >
-              Sign in
-            </button>
+            <div className="flex items-center space-x-1.5 sm:space-x-2">
+              <button
+                onClick={() => onOpenAuthModal('signin')}
+                className="px-2.5 py-1.5 rounded-md text-xs font-medium text-stone-700 hover:text-stone-900 hover:bg-stone-100 transition"
+              >
+                Sign in
+              </button>
+              <button
+                onClick={() => onOpenAuthModal('signup')}
+                className="px-3 py-1.5 rounded-md text-xs font-medium bg-stone-900 hover:bg-stone-800 text-stone-100 transition shadow-xs"
+              >
+                Create account
+              </button>
+            </div>
           )}
         </div>
       </div>

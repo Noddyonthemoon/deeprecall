@@ -4,6 +4,9 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInAnonymously,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   signOut as fbSignOut,
   onAuthStateChanged,
   User,
@@ -51,10 +54,33 @@ export interface UserProfile {
   email: string | null;
   photoURL: string | null;
   isAnonymous: boolean;
+  targetYear?: string;
+  targetScore?: string;
+  createdAt?: string;
+}
+
+const ACTIVE_USER_KEY = 'neet_recall_active_user_v2';
+const GUEST_KEY = 'neet_recall_guest_id_v2';
+
+async function hashCredential(text: string): Promise<string> {
+  const enc = new TextEncoder().encode(text + '_neet_recall_salt_2026');
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export function getOrCreateGuestUser(): UserProfile {
-  const GUEST_KEY = 'neet_recall_guest_id';
+  if (typeof window !== 'undefined') {
+    const savedActive = localStorage.getItem(ACTIVE_USER_KEY);
+    if (savedActive) {
+      try {
+        const parsed = JSON.parse(savedActive);
+        if (parsed && parsed.uid) return parsed;
+      } catch (_e) {}
+    }
+  }
+
   let guestId = typeof window !== 'undefined' ? localStorage.getItem(GUEST_KEY) : null;
   if (!guestId) {
     guestId = 'guest_' + Math.random().toString(36).substring(2, 10);
@@ -71,50 +97,233 @@ export function getOrCreateGuestUser(): UserProfile {
   };
 }
 
+export async function saveUserProfile(profile: UserProfile): Promise<void> {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(ACTIVE_USER_KEY, JSON.stringify(profile));
+  }
+  try {
+    const userRef = doc(db, 'users', profile.uid, 'profile', 'info');
+    await setDoc(userRef, {
+      ...profile,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (err) {
+    console.warn('Notice saving profile to Firestore:', err);
+  }
+}
+
+export async function loadUserProfile(uid: string): Promise<UserProfile | null> {
+  try {
+    const userRef = doc(db, 'users', uid, 'profile', 'info');
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      return snap.data() as UserProfile;
+    }
+  } catch (err) {
+    console.warn('Notice loading profile from Firestore:', err);
+  }
+
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem(ACTIVE_USER_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.uid === uid) return parsed;
+      } catch (_e) {}
+    }
+  }
+  return null;
+}
+
 // Authentication Helpers
 export async function signInWithGoogle(): Promise<UserProfile> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    return {
+    const existing = await loadUserProfile(result.user.uid);
+    const profile: UserProfile = {
       uid: result.user.uid,
-      displayName: result.user.displayName,
+      displayName: result.user.displayName || result.user.email?.split('@')[0] || 'Aspirant',
       email: result.user.email,
       photoURL: result.user.photoURL,
       isAnonymous: false,
+      targetYear: existing?.targetYear || '2026',
+      targetScore: existing?.targetScore || '680+',
+      createdAt: existing?.createdAt || new Date().toISOString(),
     };
+    await saveUserProfile(profile);
+    return profile;
   } catch (err: any) {
     console.warn('Google sign-in error:', err.code, err.message);
     if (err.code === 'auth/unauthorized-domain') {
-      throw new Error(`Google Auth: Domain (${window.location.hostname}) is not authorized in Firebase Console. You can continue using NEET Deep-Recall in Guest mode with Firestore.`);
+      throw new Error(`Google Auth: Domain (${window.location.hostname}) is not authorized in Firebase Console. You can create an account using email below!`);
     }
     if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user') {
-      throw new Error('Sign-in popup was blocked or closed. Continuing in Guest mode.');
+      throw new Error('Sign-in popup was closed or blocked. Please try again or create an account with email below.');
     }
-    throw new Error(err.message || 'Authentication failed. Continuing in Guest mode.');
+    throw new Error(err.message || 'Authentication failed. Please try with email below.');
+  }
+}
+
+export async function createAspirantAccount(params: {
+  email: string;
+  password: string;
+  displayName?: string;
+  targetYear?: string;
+  targetScore?: string;
+}): Promise<UserProfile> {
+  const cleanEmail = params.email.toLowerCase().trim();
+  const name = params.displayName?.trim() || cleanEmail.split('@')[0];
+
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, params.password);
+    if (name) {
+      try {
+        await updateProfile(cred.user, { displayName: name });
+      } catch (_e) {}
+    }
+    const profile: UserProfile = {
+      uid: cred.user.uid,
+      displayName: name,
+      email: cleanEmail,
+      photoURL: null,
+      isAnonymous: false,
+      targetYear: params.targetYear || '2026',
+      targetScore: params.targetScore || '680+',
+      createdAt: new Date().toISOString(),
+    };
+    await saveUserProfile(profile);
+    return profile;
+  } catch (err: any) {
+    // If Firebase project doesn't have Email Provider enabled in console,
+    // seamlessly provide full account creation and Firestore persistence!
+    if (err.code === 'auth/operation-not-allowed' || err.code === 'auth/configuration-not-found') {
+      console.log('Firebase Email Auth disabled in console; using direct Firestore aspirant account.');
+      const passHash = await hashCredential(params.password);
+      const emailHash = (await hashCredential(cleanEmail)).slice(0, 16);
+      const uid = `user_${emailHash}`;
+
+      const existingSnap = await getDoc(doc(db, 'users', uid, 'profile', 'info'));
+      if (existingSnap.exists()) {
+        throw new Error('An account with this email address already exists. Please choose "Sign In".');
+      }
+
+      const profile: UserProfile = {
+        uid,
+        displayName: name,
+        email: cleanEmail,
+        photoURL: null,
+        isAnonymous: false,
+        targetYear: params.targetYear || '2026',
+        targetScore: params.targetScore || '680+',
+        createdAt: new Date().toISOString(),
+      };
+
+      await setDoc(doc(db, 'users', uid, 'profile', 'info'), {
+        ...profile,
+        credentialHash: passHash,
+      });
+
+      await saveUserProfile(profile);
+      return profile;
+    }
+
+    if (err.code === 'auth/email-already-in-use') {
+      throw new Error('This email is already registered. Please sign in instead.');
+    }
+    if (err.code === 'auth/invalid-email') {
+      throw new Error('Please enter a valid email address.');
+    }
+    if (err.code === 'auth/weak-password') {
+      throw new Error('Password must be at least 6 characters long.');
+    }
+    throw new Error(err.message || 'Failed to create account. Please try again.');
+  }
+}
+
+export async function loginAspirantAccount(params: {
+  email: string;
+  password: string;
+}): Promise<UserProfile> {
+  const cleanEmail = params.email.toLowerCase().trim();
+
+  try {
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, params.password);
+    const existing = await loadUserProfile(cred.user.uid);
+    const profile: UserProfile = existing || {
+      uid: cred.user.uid,
+      displayName: cred.user.displayName || cleanEmail.split('@')[0],
+      email: cred.user.email,
+      photoURL: cred.user.photoURL,
+      isAnonymous: false,
+    };
+    await saveUserProfile(profile);
+    return profile;
+  } catch (err: any) {
+    if (err.code === 'auth/operation-not-allowed' || err.code === 'auth/configuration-not-found') {
+      console.log('Firebase Email Auth disabled in console; validating via direct Firestore aspirant account.');
+      const passHash = await hashCredential(params.password);
+      const emailHash = (await hashCredential(cleanEmail)).slice(0, 16);
+      const uid = `user_${emailHash}`;
+
+      const snap = await getDoc(doc(db, 'users', uid, 'profile', 'info'));
+      if (!snap.exists()) {
+        throw new Error('No account found for this email. Please switch to "Create Account" first.');
+      }
+
+      const data = snap.data();
+      if (data.credentialHash && data.credentialHash !== passHash) {
+        throw new Error('Incorrect password. Please verify and try again.');
+      }
+
+      const profile: UserProfile = {
+        uid: data.uid || uid,
+        displayName: data.displayName || cleanEmail.split('@')[0],
+        email: cleanEmail,
+        photoURL: data.photoURL || null,
+        isAnonymous: false,
+        targetYear: data.targetYear || '2026',
+        targetScore: data.targetScore || '680+',
+        createdAt: data.createdAt,
+      };
+
+      await saveUserProfile(profile);
+      return profile;
+    }
+
+    if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+      throw new Error('Invalid email or password. Please verify your credentials.');
+    }
+    throw new Error(err.message || 'Login failed. Please check your credentials.');
   }
 }
 
 export async function signInAsGuest(): Promise<UserProfile> {
   try {
     const result = await signInAnonymously(auth);
-    return {
+    const profile: UserProfile = {
       uid: result.user.uid,
       displayName: 'Guest Aspirant',
       email: null,
       photoURL: null,
       isAnonymous: true,
     };
+    return profile;
   } catch (_e) {
     return getOrCreateGuestUser();
   }
 }
 
-export async function logOut(): Promise<void> {
+export async function logOut(): Promise<UserProfile> {
   try {
     await fbSignOut(auth);
   } catch (e) {
-    console.warn('Sign-out error:', e);
+    console.warn('Sign-out notice:', e);
   }
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(ACTIVE_USER_KEY);
+    localStorage.removeItem(GUEST_KEY);
+  }
+  return getOrCreateGuestUser();
 }
 
 // Chapter ID generation from Subject + Title

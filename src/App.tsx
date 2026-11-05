@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   auth,
-  signInWithGoogle,
-  signInAsGuest,
   logOut,
   getOrCreateGuestUser,
   UserProfile,
@@ -29,11 +27,11 @@ import { LoadingProgress } from './components/LoadingProgress';
 import { ChapterDashboard } from './components/ChapterDashboard';
 import { DueTodayDashboard } from './components/DueTodayDashboard';
 import { SettingsModal } from './components/SettingsModal';
+import { AuthModal } from './components/AuthModal';
 import { ExternalLink, X, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<UserProfile>(getOrCreateGuestUser);
-  const [authLoading, setAuthLoading] = useState(false);
 
   // View state
   const [activeView, setActiveView] = useState<'home' | 'chapter' | 'dueToday'>('home');
@@ -50,6 +48,8 @@ export default function App() {
 
   // Modals & alerts
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signin');
   const [errorMessage, setErrorMessage] = useState<{ text: string; isRateLimit?: boolean } | null>(
     null
   );
@@ -93,18 +93,14 @@ export default function App() {
     return () => unsubscribe();
   }, [loadUserData]);
 
-  const handleSignIn = async () => {
-    setErrorMessage(null);
-    try {
-      const profile = await signInWithGoogle();
-      setUser(profile);
-      await loadUserData(profile.uid);
-    } catch (err: any) {
-      console.warn('Sign-in notice:', err.message);
-      setErrorMessage({
-        text: err.message || 'Google Sign-in could not be completed. Continuing in Guest mode with full Firestore storage.',
-      });
-    }
+  const handleOpenAuthModal = (mode: 'signin' | 'signup' = 'signin') => {
+    setAuthModalMode(mode);
+    setIsAuthModalOpen(true);
+  };
+
+  const handleAuthSuccess = async (newUser: UserProfile) => {
+    setUser(newUser);
+    await loadUserData(newUser.uid);
   };
 
   const handleSignOut = async () => {
@@ -267,7 +263,7 @@ export default function App() {
         onNavigateHome={() => setActiveView('home')}
         onNavigateDueToday={() => setActiveView('dueToday')}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onSignIn={handleSignIn}
+        onOpenAuthModal={handleOpenAuthModal}
         onSignOut={handleSignOut}
       />
 
@@ -372,6 +368,14 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         user={user}
+      />
+
+      {/* Auth Modal (Sign in / Create Account) */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+        initialMode={authModalMode}
       />
     </div>
   );
