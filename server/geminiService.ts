@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import { StudyKitData, DepthSetting, SubjectType, ClassLevel } from '../src/types/neet';
 
 // Initialize Gemini client strictly with server environment variable
@@ -17,16 +17,17 @@ const getGenAIClient = () => {
   });
 };
 
-const SYSTEM_INSTRUCTION = `You are a senior NEET content expert who has authored question banks for a top Indian test-prep company. You will receive one chapter of an NCERT Class 11 or 12 Physics/Chemistry/Biology textbook as a PDF, plus the ability to research the web for how NEET actually tests this chapter. Produce a rigorous, exam-accurate study kit.
+const SYSTEM_INSTRUCTION = `You are a senior NEET exam author and curriculum specialist who has authored question banks for premier Indian test-prep institutes (Allen, Aakash, Physics Wallah). You will receive one chapter of an NCERT Class 11 or 12 Physics/Chemistry/Biology textbook as a PDF document. Produce a rigorous, clinically accurate study kit.
 
 Rules:
-1. Ground every fact strictly in the provided NCERT PDF. Do not invent data, constants, or claims not present in the chapter.
-2. Before writing questions, research previous-year questions (PYQ), how major coaching institutes (Physics Wallah, Aakash, Allen) frame questions on this chapter, openly available text-based NEET question banks on GitHub (plain-text, CSV, or markdown decks only; explicitly skip binary .apkg Anki files), and frequently-discussed traps on forums like r/NEET. Prefer reputable, high-signal sources; ignore paywalled or low-quality content.
-3. Never copy question text verbatim from any source. Use what you find only to identify patterns — common distractor traps, realistic numerical ranges, phrasing conventions (e.g. "Which of the following is/are correct?", Assertion–Reason, Match-the-following, case-based) — then write fresh, original questions in that style, sourced strictly from this NCERT chapter's content.
-4. Match authentic NEET conventions: single-best-answer MCQs with 4 options; distractors must reflect real misconceptions or near-miss values, never arbitrary nonsense; include at least one Assertion-Reason item; for Physics/Chemistry include at least one numerical problem using exact NCERT constants/values; spread items across Bloom's levels (recall, understanding, application, analysis).
-5. Tag every flashcard and question with topic, difficulty (easy/medium/hard), and Bloom level, so the app can filter by difficulty without another API call.
-6. Report 2–6 short, genuinely useful PYQ-trend observations with the real source titles/URLs you used. List any genuinely useful open external resources you found, with real URLs. Never fabricate a URL.
-7. Output ONLY JSON matching the provided schema — no prose outside it.`;
+1. Ground every fact strictly in the provided NCERT PDF chapter. Do not invent data, constants, or assertions not present in the chapter text.
+2. Leverage deep parametric mastery of historical NEET previous-year questions (PYQ, 2010–2024) and top test series distractor patterns. Match standard phrasing ("Which of the following is correct/incorrect?", Assertion–Reason, Match-the-following, case-based questions).
+3. Distractors must represent authentic student misconceptions, near-miss calculations, or common botanical/anatomical traps, never arbitrary nonsense.
+4. For Biology, emphasize exact NCERT terminology, summary statements, diagram labels, and table values.
+5. For Physics/Chemistry, include numerical calculations grounded in the chapter's stated formulas and exact constants.
+6. Tag every flashcard and question with topic, difficulty (easy/medium/hard), and Bloom taxonomy level (recall, understanding, application, analysis).
+7. Report 2–6 concise, high-yield PYQ trend observations for this chapter, plus verified open educational resources.
+8. Output ONLY JSON strictly matching the provided schema — no markdown fences, no surrounding prose.`;
 
 export const STUDY_KIT_SCHEMA = {
   type: Type.OBJECT,
@@ -239,16 +240,11 @@ Target generation depth:
 ${depthConfig.desc}
 
 Instructions:
-1. Search online using Google Search for:
-   - NEET previous-year questions (PYQ) on this specific chapter.
-   - Coaching institute patterns (Physics Wallah, Aakash, Allen) and high-yield traps.
-   - Openly available text-based NEET question banks or markdown/CSV decks on GitHub (plain-text only, NO binary .apkg).
-   - High-signal Reddit discussion (r/NEET) regarding tricky NCERT lines, diagrams, and confusing definitions.
-2. Read the most promising source pages via url_context.
-3. Ground all questions and facts strictly in the NCERT text. Never fabricate data or URLs.
-4. Distribute difficulty (easy/medium/hard) realistically for NEET. Distractors must reflect authentic student misconceptions.
-5. Provide concept summaries with exact NCERT section references.
-6. Provide genuine PYQ trend insights with actual URLs.`;
+1. Ground every concept summary, flashcard, and question strictly in the provided NCERT chapter content.
+2. Formulate authentic NEET MCQs reflecting actual NTA exam patterns (single-correct 4 options, Assertion-Reason items with standard option keys, Match the following, and numerical problems using exact NCERT constants).
+3. Distractors must reflect real student traps and near-miss values based on established NEET coaching benchmarks (Allen, Aakash, Physics Wallah).
+4. Provide genuine PYQ trend insights based on historical NEET patterns (2010–2024) for this specific chapter.
+5. Calibrate flashcards across Bloom levels (recall, understanding, application, analysis) with difficulty ratings (easy, medium, hard).`;
 
   // Format the document part
   const pdfPart = {
@@ -258,111 +254,71 @@ Instructions:
     },
   };
 
-  // Approach A: Gemini 3.8 Flash with tools + structured responseSchema in one call
-  try {
-    console.log('[StudyKit] Attempting Approach A (Gemini 3.8 Flash single-call with tools + responseSchema)...');
-    const response = await callWithRetry(async () => {
-      return await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: [pdfPart, { text: promptText }],
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          tools: [{ googleSearch: {} }],
-          responseMimeType: 'application/json',
-          responseSchema: STUDY_KIT_SCHEMA as any,
-          maxOutputTokens: 8192,
-        },
-      });
-    }, 2, 1500);
+  const candidateModels = [
+    { name: 'gemini-3.8-flash', lowLatencyThinking: true },
+    { name: 'gemini-flash-latest', lowLatencyThinking: false },
+    { name: 'gemini-3.1-flash-lite', lowLatencyThinking: false },
+  ];
 
-    const text = response.text?.trim();
-    if (!text) {
-      throw new Error('Empty response received from Gemini in Approach A');
-    }
+  let lastError: any = null;
 
-    const parsed = JSON.parse(text) as StudyKitData;
-    console.log('[StudyKit] Approach A succeeded!');
-    return parsed;
-  } catch (errApproachA: any) {
-    console.warn('[StudyKit] Approach A failed or tools limited:', errApproachA?.status, errApproachA?.message);
+  for (const candidate of candidateModels) {
+    try {
+      console.log(`[StudyKit] Generating study kit using ${candidate.name} (Direct NCERT Grounding)...`);
+      const config: any = {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        responseMimeType: 'application/json',
+        responseSchema: STUDY_KIT_SCHEMA as any,
+        maxOutputTokens: 8192,
+      };
 
-    // If key is invalid (401), fail fast with clear actionable instruction
-    if (
-      errApproachA?.status === 401 ||
-      errApproachA?.message?.includes('401') ||
-      errApproachA?.message?.includes('UNAUTHENTICATED') ||
-      errApproachA?.message?.includes('API key not valid')
-    ) {
-      throw new Error(
-        'Gemini API authentication failed (401). Please verify that your GEMINI_API_KEY secret is valid and active in the AI Studio Secrets panel.'
-      );
-    }
+      if (candidate.lowLatencyThinking) {
+        config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+      }
 
-    // Approach B (Fallback): Direct NCERT grounding synthesis with model fallback chain
-    // (Bypasses search tool limitations and single-model quota exhaustion)
-    console.log('[StudyKit] Falling back to Direct NCERT Synthesis (PDF + Comprehensive NEET Prompt, no search tools)...');
-    
-    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
-    const directPrompt = `${promptText}
+      const response = await callWithRetry(async () => {
+        return await ai.models.generateContent({
+          model: candidate.name,
+          contents: [pdfPart, { text: promptText }],
+          config,
+        });
+      }, 2, 1200);
 
-Note: Ground all concept summaries, flashcards, MCQs, distractor logic, and assertion-reason questions strictly in the provided NCERT chapter content and established NEET exam patterns. Report verified high-yield PYQ trends and reputable open resources.`;
+      const text = response.text?.trim();
+      if (!text) {
+        throw new Error(`Empty response received from ${candidate.name}`);
+      }
 
-    let lastError: any = null;
-    for (const modelName of candidateModels) {
-      try {
-        console.log(`[StudyKit] Attempting synthesis with model: ${modelName}...`);
-        const directResponse = await callWithRetry(async () => {
-          return await ai.models.generateContent({
-            model: modelName,
-            contents: [pdfPart, { text: directPrompt }],
-            config: {
-              systemInstruction: SYSTEM_INSTRUCTION,
-              responseMimeType: 'application/json',
-              responseSchema: STUDY_KIT_SCHEMA as any,
-              maxOutputTokens: 8192,
-            },
-          });
-        }, 1, 1000);
+      const parsed = JSON.parse(text) as StudyKitData;
+      console.log(`[StudyKit] Successfully generated study kit using ${candidate.name}!`);
+      return parsed;
+    } catch (err: any) {
+      console.warn(`[StudyKit] Attempt with ${candidate.name} failed:`, err?.status, err?.message?.slice(0, 120));
+      lastError = err;
 
-        const text = directResponse.text?.trim();
-        if (text) {
-          const parsed = JSON.parse(text) as StudyKitData;
-          console.log(`[StudyKit] Direct NCERT Synthesis succeeded using ${modelName}!`);
-          return parsed;
-        }
-      } catch (errModel: any) {
-        console.warn(`[StudyKit] Model ${modelName} failed:`, errModel?.status, errModel?.message?.slice(0, 100));
-        lastError = errModel;
-        // If authentication error, no need to retry with other models
-        if (
-          errModel?.status === 401 ||
-          errModel?.message?.includes('401') ||
-          errModel?.message?.includes('UNAUTHENTICATED')
-        ) {
-          break;
-        }
+      // Fail fast on auth errors
+      if (
+        err?.status === 401 ||
+        err?.message?.includes('401') ||
+        err?.message?.includes('UNAUTHENTICATED') ||
+        err?.message?.includes('API key not valid')
+      ) {
+        throw new Error(
+          'Gemini API authentication failed (401). Please verify your GEMINI_API_KEY secret in the AI Studio Secrets panel.'
+        );
       }
     }
-
-    if (
-      lastError?.status === 401 ||
-      lastError?.message?.includes('401') ||
-      lastError?.message?.includes('UNAUTHENTICATED') ||
-      lastError?.message?.includes('API key not valid')
-    ) {
-      throw new Error(
-        'Gemini API authentication failed (401). Please check that your GEMINI_API_KEY secret is valid in the AI Studio Secrets panel.'
-      );
-    }
-    if (
-      lastError?.status === 429 ||
-      lastError?.message?.includes('RESOURCE_EXHAUSTED') ||
-      lastError?.message?.includes('quota')
-    ) {
-      throw new Error(
-        "You've hit today's free-tier limit across available models — check your quota at https://aistudio.google.com/rate-limit"
-      );
-    }
-    throw new Error(`Failed to generate study kit: ${lastError?.message || 'Unknown error'}`);
   }
+
+  if (
+    lastError?.status === 429 ||
+    lastError?.message?.includes('RESOURCE_EXHAUSTED') ||
+    lastError?.message?.includes('quota')
+  ) {
+    throw new Error(
+      "You've hit today's free-tier limit across available models — check your quota at https://aistudio.google.com/rate-limit"
+    );
+  }
+
+  throw new Error(`Failed to generate study kit: ${lastError?.message || 'Unknown generation error'}`);
 }

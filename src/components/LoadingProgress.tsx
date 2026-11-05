@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Search, Brain, Check, Clock } from 'lucide-react';
+import { Check } from 'lucide-react';
 
 interface LoadingProgressProps {
   subject: string;
@@ -10,20 +10,20 @@ const STEPS = [
   {
     seconds: 0,
     title: 'Parsing NCERT chapter document',
-    desc: 'Extracting definitions, terminology, and key biological mechanisms.',
+    desc: 'Extracting definitions, terminology, and core biological mechanisms.',
   },
   {
-    seconds: 7,
-    title: 'Surveying previous-year exam patterns',
-    desc: 'Analyzing historical NEET questions and common coaching distractor formats.',
+    seconds: 4,
+    title: 'Surveying NEET exam patterns',
+    desc: 'Benchmarking historical NEET PYQ trends and coaching distractor frameworks.',
   },
   {
-    seconds: 18,
+    seconds: 9,
     title: 'Synthesizing exam-accurate questions',
     desc: 'Constructing 4-option MCQs with distractor rationale and Assertion-Reason pairs.',
   },
   {
-    seconds: 28,
+    seconds: 15,
     title: 'Structuring spaced-repetition deck',
     desc: 'Calibrating Bloom-tagged flashcards and SM-2 initial retention schedules.',
   },
@@ -47,10 +47,24 @@ export const LoadingProgress: React.FC<LoadingProgressProps> = ({ subject, chapt
     }
   }
 
-  const activeStep = STEPS[currentStepIndex];
+  // Asymptotic progress calculation that continuously moves without stalling
+  const progressPercent = Math.min(
+    95,
+    Math.round(100 * (1 - Math.exp(-elapsed / 14)))
+  );
+
+  const getSubStatusMessage = () => {
+    if (elapsed > 35) {
+      return 'Deep analysis in progress — finalizing question rationale & Bloom ratings...';
+    }
+    if (elapsed > 20) {
+      return 'Cross-referencing NCERT formulas, exceptions, and distractor traps...';
+    }
+    return STEPS[currentStepIndex].desc;
+  };
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-20 space-y-8">
+    <div className="max-w-xl mx-auto px-4 py-16 sm:py-20 space-y-8">
       {/* Calm, un-hyped status indicator */}
       <div className="text-center space-y-3">
         <div className="w-10 h-10 mx-auto rounded-full border-2 border-stone-300 border-t-stone-800 animate-spin" />
@@ -60,8 +74,22 @@ export const LoadingProgress: React.FC<LoadingProgressProps> = ({ subject, chapt
         <p className="text-xs sm:text-sm text-stone-500 font-sans">
           {chapterTitle ? `${subject} · "${chapterTitle}"` : subject}
         </p>
-        <div className="inline-block text-[11px] font-mono text-stone-400 bg-stone-100 px-2 py-0.5 rounded">
-          Elapsed: {elapsed}s (typically 15–35s)
+
+        <div className="flex items-center justify-center space-x-2 pt-1">
+          <div className="inline-block text-[11px] font-mono text-stone-400 bg-stone-100 px-2.5 py-0.5 rounded">
+            Elapsed: {elapsed}s (typically 12–25s)
+          </div>
+          <div className="inline-block text-[11px] font-mono text-stone-500 bg-stone-100 px-2 py-0.5 rounded">
+            {progressPercent}%
+          </div>
+        </div>
+
+        {/* Dynamic progress bar */}
+        <div className="w-64 max-w-xs mx-auto h-1 bg-stone-200/80 rounded-full overflow-hidden mt-3">
+          <div
+            className="h-full bg-stone-800 transition-all duration-700 ease-out"
+            style={{ width: `${progressPercent}%` }}
+          />
         </div>
       </div>
 
@@ -91,7 +119,9 @@ export const LoadingProgress: React.FC<LoadingProgressProps> = ({ subject, chapt
                   {s.title}
                 </p>
                 {isCurrent && (
-                  <p className="text-[11px] text-stone-500 mt-0.5 leading-relaxed">{s.desc}</p>
+                  <p className="text-[11px] text-stone-500 mt-0.5 leading-relaxed">
+                    {getSubStatusMessage()}
+                  </p>
                 )}
               </div>
             </div>
@@ -100,7 +130,7 @@ export const LoadingProgress: React.FC<LoadingProgressProps> = ({ subject, chapt
       </div>
 
       <p className="text-[11px] text-stone-400 text-center leading-relaxed font-sans max-w-md mx-auto">
-        Generation occurs strictly in a single pipeline call to preserve free-tier quotas and ensure complete grounding in your textbook file.
+        Generation occurs strictly in a single optimized direct synthesis call to preserve free-tier quotas and ensure complete grounding in your textbook file.
       </p>
     </div>
   );
