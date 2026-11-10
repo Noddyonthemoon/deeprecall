@@ -8,11 +8,11 @@ Upload a single NCERT textbook chapter PDF (Class 11 or 12 Biology, Chemistry, o
 - authentic Computer-Based Test (CBT) question sets (MCQs, Assertion–Reason pairs, Match-the-following, and Application scenarios) with distractor rationale
 - Previous-Year Question (PYQ) trend insights and curated external references
 ---
-<div style="display: flex; flex-direction: row; overflow-x: scroll; white-space: nowrap; gap: 10px; padding: 10px 0; width: 100%; -webkit-overflow-scrolling: touch;">
-    <img src="image-assets/image1.png" alt="Image 1" width="400" style="flex: 0 0 auto;">
-    <img src="image-assets/image2.png" alt="Image 2" width="400" style="flex: 0 0 auto;">
-    <img src="image-assets/image3.png" alt="Image 3" width="400" style="flex: 0 0 auto;">
-    <img src="image-assets/image4.png" alt="Image 4" width="400" style="flex: 0 0 auto;">
+<div style="display: flex; flex-direction: row; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0px; padding: 10px 0; width: 100%; -webkit-overflow-scrolling: touch;">
+    <img src="image-assets/image1.png" alt="Image 1" style="flex: 0 0 100%; width: 100%; scroll-snap-align: start; object-fit: contain;">
+    <img src="image-assets/image2.png" alt="Image 2" style="flex: 0 0 100%; width: 100%; scroll-snap-align: start; object-fit: contain;">
+    <img src="image-assets/image3.png" alt="Image 3" style="flex: 0 0 100%; width: 100%; scroll-snap-align: start; object-fit: contain;">
+    <img src="image-assets/image4.png" alt="Image 4" style="flex: 0 0 100%; width: 100%; scroll-snap-align: start; object-fit: contain;">
 </div>
 
 ---
