@@ -9,7 +9,22 @@ Upload a single NCERT textbook chapter PDF (Class 11 or 12 Biology, Chemistry, o
 - Previous-Year Question (PYQ) trend insights and curated external references
 
 ---
+## Prompts & Sample Study Kit Output
 
+This repository includes the complete prompts and verified output format used by NEET Deep-Recall:
+
+1. **System Prompt**: [`prompt/system_prompt.txt`](prompt/system_prompt.txt)
+   - The exact system instruction sent to the Gemini models (`gemini-3.8-flash` / `gemini-3.1-flash-lite`).
+   - Enforces strict NCERT ground truth, authentic exam distractor patterns (near-miss values, subtle terminology flips), Bloom's taxonomy tagging, and structured JSON output without prose.
+
+2. **Sample Generated Output**: [`sample_chapter_output.json`](sample_chapter_output.json)
+   - A complete, representative study kit for NCERT Class 11 Biology: *Cell: The Unit of Life*.
+   - Contains NCERT section-referenced concept summaries, Bloom-classified SM-2 flashcards, high-yield MCQs with distractor breakdown, assertion-reason items, and PYQ trend analysis.
+
+3. **Initial Project Specification**: [`prompt/initial_project_prompt.txt`](prompt/initial_project_prompt.txt)
+   - The full foundational brief and system requirements used to architect NEET Deep-Recall, including the single-call constraint, Firestore schema, and SuperMemo-2 mathematical rules.
+
+---
 ## Why This Exists
 
 In NEET-UG, Biology alone accounts for 360 out of 720 marks (50% of the entire paper), and virtually 100% of the questions are drawn directly from the lines, diagrams, and tables of NCERT textbooks.
@@ -58,22 +73,7 @@ NEET Deep-Recall enforces strict NCERT grounding from the uploaded PDF and struc
 
 ---
 
-## Prompts & Sample Study Kit Output
 
-This repository includes the complete prompts and verified output format used by NEET Deep-Recall:
-
-1. **System Prompt**: [`prompt/system_prompt.txt`](prompt/system_prompt.txt)
-   - The exact system instruction sent to the Gemini models (`gemini-3.8-flash` / `gemini-3.1-flash-lite`).
-   - Enforces strict NCERT ground truth, authentic exam distractor patterns (near-miss values, subtle terminology flips), Bloom's taxonomy tagging, and structured JSON output without prose.
-
-2. **Sample Generated Output**: [`sample_chapter_output.json`](sample_chapter_output.json)
-   - A complete, representative study kit for NCERT Class 11 Biology: *Cell: The Unit of Life*.
-   - Contains NCERT section-referenced concept summaries, Bloom-classified SM-2 flashcards, high-yield MCQs with distractor breakdown, assertion-reason items, and PYQ trend analysis.
-
-3. **Initial Project Specification**: [`prompt/initial_project_prompt.txt`](prompt/initial_project_prompt.txt)
-   - The full foundational brief and system requirements used to architect NEET Deep-Recall, including the single-call constraint, Firestore schema, and SuperMemo-2 mathematical rules.
-
----
 
 ## Architecture & Tech Stack
 
