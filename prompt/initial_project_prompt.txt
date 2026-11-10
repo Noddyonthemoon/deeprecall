@@ -1,0 +1,209 @@
+Build a full-stack web app called NEET Deep-Recall: a student uploads one NCERT textbook chapter (PDF) for a NEET subject (Physics, Chemistry, or Biology), more specifically for biology because that is the most memorization based subject out of the three, and the app produces a rigorous, exam-accurate study kit — concept summaries, spaced-repetition flashcards, and a mixed question set — grounded both in the textbook and in how NEET actually tests that chapter.
+
+Architecture
+Use the default full-stack setup: React frontend, Node.js backend.
+All Gemini API calls happen server-side, never from the client.
+Provision Firestore and Firebase Authentication (Sign in with Google). Every generated study kit, flashcard review state, and quiz attempt is stored per-user in Firestore, not localStorage — it must survive across sessions and devices.
+Data model in Firestore: users/{uid}/chapters/{chapterId} holding the full generated JSON (schema below) plus createdAt; and users/{uid}/chapters/{chapterId}/cards/{cardId} holding each flashcard's spaced-repetition state (see SM-2 section).
+The core AI pipeline — ONE generation call per chapter, budget permitting
+
+This is the single most important constraint: generation happens exactly once per chapter unless the user explicitly clicks "Regenerate." No background or automatic re-calls, ever. Free-tier quotas are project-specific and shown live at aistudio.google.com/rate-limit — don't hardcode numbers in the app; instead show a small link to that dashboard in Settings.
+
+Approach A (preferred). Use a current Gemini 3.8 Flash-tier model. In one server-side call, send:
+
+the uploaded PDF as inline document content (NCERT chapters are a few MB — no need for the Files API/resumable upload),
+tools: [{type: "google_search"}, {type: "url_context"}],
+response_format set to the JSON schema below.
+
+Combining built-in tools with a structured JSON response in a single call is currently a Gemini-3-series capability. If the model/project doesn't support it, or errors out, fall back to:
+
+Approach B (fallback, works on any current Flash model incl. 2.5). Two calls:
+
+Research call — text-only prompt + tools: [google_search, url_context], no schema. Ask the model to research PYQ trends and return a short markdown brief with source titles/URLs (see research instructions below).
+Synthesis call — the PDF as document input + the research brief pasted in as plain text + response_format = the schema, no tools. Generate the final structured kit grounded in both.
+
+Try Approach A first; catch failures and transparently fall back to B. Either way this is 1–2 Gemini calls total per chapter, never more.
+
+Set maxOutputTokens generously (~8000) for the "Standard" depth setting below — Flash-tier TPM budgets are large; token count is not the bottleneck, call count is.
+
+Research instructions (embed this reasoning in the model's prompt/system instruction)
+
+Tell the model explicitly, as part of its instructions, to use its search tool to look into:
+
+NEET previous-year questions on this specific chapter,
+how coaching institutes (Physics Wallah, Aakash, Allen, etc.) typically frame questions on it,
+openly available NEET question banks or flashcard sets on GitHub — plain-text, CSV, or markdown decks only; explicitly skip binary .apkg Anki files, since those need SQLite/zip parsing that's out of scope here,
+high-signal discussion (e.g. r/NEET) on which sub-topics or traps are most frequently tested for this chapter.
+
+It should use google_search to find candidates and url_context to actually read the most promising pages (not just snippets) — especially raw GitHub files and well-upvoted discussion threads.
+
+System instruction to embed for the generation call
+
+Use this as the model's system instruction (adapt lightly, keep the substance):
+
+You are a senior NEET content expert who has authored question banks for a top Indian test-prep company. You will receive one chapter of an NCERT Class 11 or 12 Physics/Chemistry/Biology textbook as a PDF, plus the ability to research the web for how NEET actually tests this chapter. Produce a rigorous, exam-accurate study kit.
+
+Rules:
+
+Ground every fact strictly in the provided NCERT PDF. Do not invent data, constants, or claims not present in the chapter.
+Before writing questions, research previous-year questions, how major coaching institutes frame questions on this chapter, openly available text-based NEET question banks on GitHub, and frequently-discussed traps on forums like r/NEET. Prefer reputable, high-signal sources; ignore paywalled or low-quality content.
+Never copy question text verbatim from any source. Use what you find only to identify patterns — common distractor traps, realistic numerical ranges, phrasing conventions (e.g. "Which of the following is/are correct?", Assertion–Reason, Match-the-following, case-based) — then write fresh, original questions in that style, sourced strictly from this NCERT chapter's content.
+Match authentic NEET conventions: single-best-answer MCQs with 4 options; distractors must reflect real misconceptions or near-miss values, never arbitrary nonsense; include at least one Assertion-Reason item; for Physics/Chemistry include at least one numerical problem using exact NCERT constants/values; spread items across Bloom's levels (recall, understanding, application, analysis).
+Tag every flashcard and question with topic, difficulty (easy/medium/hard), and Bloom level, so the app can filter by difficulty without another API call.
+Report 2–6 short, genuinely useful PYQ-trend observations with the real source titles/URLs you used. List any genuinely useful open external resources you found, with real URLs. Never fabricate a URL.
+Output ONLY JSON matching the provided schema — no prose outside it.
+
+Let the user pick a depth before generating (affects item counts passed into the prompt, not extra calls): Quick (8 flashcards / 4 MCQs), Standard (15 flashcards / 8 MCQs / 2 short-answer / 2 application), Deep (25 flashcards / 12 MCQs / 4 short-answer / 3 application). Default to Standard.
+
+Output JSON schema (use as response_format.schema)
+json
+{
+"type": "object",
+"properties": {
+"chapter_meta": {
+"type": "object",
+"properties": {
+"subject": {"type": "string", "enum": ["Physics", "Chemistry", "Biology"]},
+"chapter_title": {"type": "string"},
+"ncert_class": {"type": "string", "enum": ["11", "12"]},
+"topics_covered": {"type": "array", "items": {"type": "string"}}
+},
+"required": ["subject", "chapter_title", "ncert_class", "topics_covered"]
+},
+"concept_summaries": {
+"type": "array",
+"items": {
+"type": "object",
+"properties": {
+"topic": {"type": "string"},
+"summary": {"type": "string"},
+"ncert_section_reference": {"type": "string"}
+},
+"required": ["topic", "summary"]
+}
+},
+"flashcards": {
+"type": "array",
+"items": {
+"type": "object",
+"properties": {
+"front": {"type": "string"},
+"back": {"type": "string"},
+"topic": {"type": "string"},
+"difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
+"bloom_level": {"type": "string", "enum": ["recall", "understanding", "application", "analysis"]},
+"pyq_inspired": {"type": "boolean"}
+},
+"required": ["front", "back", "topic", "difficulty", "bloom_level"]
+}
+},
+"mcqs": {
+"type": "array",
+"items": {
+"type": "object",
+"properties": {
+"question": {"type": "string"},
+"question_style": {"type": "string", "enum": ["direct", "assertion_reason", "numerical", "match_the_following", "case_based"]},
+"options": {"type": "array", "items": {"type": "string"}, "minItems": 4, "maxItems": 4},
+"correct_index": {"type": "integer", "minimum": 0, "maximum": 3},
+"explanation": {"type": "string"},
+"distractor_logic": {"type": "string"},
+"difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
+"topic": {"type": "string"},
+"pyq_trend_note": {"type": "string"}
+},
+"required": ["question", "question_style", "options", "correct_index", "explanation", "difficulty", "topic"]
+}
+},
+"short_answer_questions": {
+"type": "array",
+"items": {
+"type": "object",
+"properties": {
+"question": {"type": "string"},
+"model_answer": {"type": "string"},
+"topic": {"type": "string"},
+"difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]}
+},
+"required": ["question", "model_answer", "topic", "difficulty"]
+}
+},
+"application_questions": {
+"type": "array",
+"items": {
+"type": "object",
+"properties": {
+"scenario": {"type": "string"},
+"question": {"type": "string"},
+"model_answer": {"type": "string"},
+"topic": {"type": "string"}
+},
+"required": ["scenario", "question", "model_answer", "topic"]
+}
+},
+"pyq_trend_insights": {
+"type": "array",
+"items": {
+"type": "object",
+"properties": {
+"observation": {"type": "string"},
+"source_titles": {"type": "array", "items": {"type": "string"}},
+"source_urls": {"type": "array", "items": {"type": "string"}}
+},
+"required": ["observation"]
+}
+},
+"external_resources": {
+"type": "array",
+"items": {
+"type": "object",
+"properties": {
+"title": {"type": "string"},
+"url": {"type": "string"},
+"resource_type": {"type": "string", "enum": ["open_question_bank", "anki_export_text", "discussion_thread", "reference_article"]},
+"note": {"type": "string"}
+},
+"required": ["title", "url", "resource_type"]
+}
+}
+},
+"required": ["chapter_meta", "concept_summaries", "flashcards", "mcqs", "short_answer_questions", "application_questions", "pyq_trend_insights", "external_resources"]
+}
+Spaced repetition — implement client-side, no AI calls involved
+
+Implement the SM-2 algorithm in plain JS. Per flashcard, store in Firestore: easeFactor (start 2.5), interval (days), repetitions, dueDate.
+
+Review UI: flip-card with four buttons — Again / Hard / Good / Easy, mapped to quality q = 0 / 3 / 4 / 5. On each review:
+
+if q < 3:
+repetitions = 0
+interval = 1
+else:
+if repetitions == 0: interval = 1
+elif repetitions == 1: interval = 6
+else: interval = round(interval * easeFactor)
+repetitions += 1
+easeFactor = max(1.3, easeFactor + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)))
+dueDate = today + interval days
+
+Build a "Due Today" home dashboard that queries cards across all of the user's generated chapters where dueDate <= today, sorted oldest-due first — this is the cross-chapter spaced-repetition view.
+
+UI / screens
+Upload screen — drag-and-drop PDF, subject dropdown, depth selector (Quick/Standard/Deep), "Generate Study Kit" button. If a kit already exists for this chapter title + subject, show it instead of regenerating, with a separate, clearly-labeled "Regenerate (uses another AI call)" button.
+Loading state — the call can take 15–40s (PDF + search + generation); show real progress copy ("Reading chapter…", "Checking PYQ trends…", "Writing questions…"), not a bare spinner.
+Chapter dashboard — tabs: Concept Summary · Flashcards · Quiz · PYQ Trend Insights (with clickable source links) · External Resources. A difficulty toggle (Easy/Medium/Hard/All) filters the already-generated pool client-side — never triggers a new API call.
+Flashcard review mode — Anki-style flip card, SM-2 buttons as above.
+Quiz mode — MCQs one at a time, graded client-side against correct_index (already in the stored JSON); short-answer/application questions shown with a "Reveal model answer" toggle for self-grading. Score summary at the end.
+"Due Today" home dashboard as described above.
+Small "Export as Anki-compatible text" button on the flashcards tab — tab-separated front/back, pure client-side, no AI call.
+A thumbs-down flag on any question/flashcard ("this looks wrong") that just writes a flagged: true field to Firestore for the student's own later review — no auto-correction, just a marker.
+Free-tier resilience
+Wrap every Gemini call in retry-with-backoff on 429s, and surface a plain "You've hit today's free-tier limit — try again later, or check your quota at aistudio.google.com/rate-limit" message rather than a raw error.
+Never call Gemini on page load or on tab switches — only on the explicit "Generate" or "Regenerate" button.
+Copyright/licensing note (build this into the system instruction and UI copy)
+
+The app must not reproduce verbatim text from GitHub decks, Reddit, or coaching-site content — only use them to infer patterns, per rule 3 above. Where a genuinely open, reusable resource is found (e.g., an openly licensed plain-text question bank on GitHub), surface it as a linked external resource rather than ingesting its content wholesale.
+
+Explicitly out of scope for this build (don't attempt these)
+Parsing binary .apkg Anki files.
+Any AI call that isn't the 1–2 generation calls above (no chat/doubt-solving feature in this version).

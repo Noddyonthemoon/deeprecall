@@ -6,5 +6,6 @@ coverage/
 *.log
 server.js
 .aistudio/
+public/assets/aistudio/
 .env*
 !.env.example

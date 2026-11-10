@@ -48,8 +48,30 @@ NEET Deep-Recall enforces strict NCERT grounding from the uploaded PDF and struc
 
 ### 4. Persistence & Auth
 - **Dual Session Model**: First-time visitors receive an immediate persistent session with Firestore storage (`users/{uid}/chapters/...`) without forced login prompts.
-- **Optional Google Sign-In**: Aspirants can link their Google account at any time to sync decks across devices.
+- **Dedicated Aspirant Auth Modal**: Full email/password sign-up with target exam year and target score, plus 1-click Google authentication.
 - **Offline / Sample Kits**: Ships with pre-loaded high-yield chapters (*Cell: The Unit of Life* and *Human Reproduction*) for instant offline study.
+
+### 5. Account Dashboard & Custom API Key
+- Clicking the account name in the top navigation opens the **Account & Engine Settings** panel.
+- Shows student target year (e.g. NEET 2026) and target score (e.g. 680+/720).
+- **Personal Gemini Key Override**: Students can optionally supply their own Gemini API key to bypass shared free-tier rate limits or demand spikes. Keys are stored locally in the browser and passed securely to the server proxy with instant validation.
+
+---
+
+## Prompts & Sample Study Kit Output
+
+This repository includes the complete prompts and verified output format used by NEET Deep-Recall:
+
+1. **System Prompt**: [`prompt/system_prompt.txt`](prompt/system_prompt.txt)
+   - The exact system instruction sent to the Gemini models (`gemini-3.8-flash` / `gemini-3.1-flash-lite`).
+   - Enforces strict NCERT ground truth, authentic exam distractor patterns (near-miss values, subtle terminology flips), Bloom's taxonomy tagging, and structured JSON output without prose.
+
+2. **Sample Generated Output**: [`sample_chapter_output.json`](sample_chapter_output.json)
+   - A complete, representative study kit for NCERT Class 11 Biology: *Cell: The Unit of Life*.
+   - Contains NCERT section-referenced concept summaries, Bloom-classified SM-2 flashcards, high-yield MCQs with distractor breakdown, assertion-reason items, and PYQ trend analysis.
+
+3. **Initial Project Specification**: [`prompt/initial_project_prompt.txt`](prompt/initial_project_prompt.txt)
+   - The full foundational brief and system requirements used to architect NEET Deep-Recall, including the single-call constraint, Firestore schema, and SuperMemo-2 mathematical rules.
 
 ---
 
@@ -57,22 +79,29 @@ NEET Deep-Recall enforces strict NCERT grounding from the uploaded PDF and struc
 
 ```
 ├── Client (React 19 + TypeScript + Tailwind CSS v4)
-│   ├── src/components/UploadScreen.tsx        # Drag-and-drop PDF dropzone & parameter selector
-│   ├── src/components/ChapterDashboard.tsx    # 5-tab study kit workspace
-│   ├── src/components/FlashcardsTab.tsx       # SM-2 card reviewer & Anki exporter
-│   ├── src/components/QuizTab.tsx             # NEET CBT exam engine & score analyzer
-│   ├── src/components/DueTodayDashboard.tsx   # Cross-chapter daily review queue
-│   ├── src/lib/sm2.ts                         # Pure SM-2 mathematical implementation
-│   └── src/lib/firebase.ts                    # Firestore operations & auth listeners
+│   ├── src/components/UploadScreen.tsx           # Drag-and-drop PDF dropzone & parameter selector
+│   ├── src/components/ChapterDashboard.tsx       # 5-tab study kit workspace
+│   ├── src/components/FlashcardsTab.tsx          # SM-2 card reviewer & Anki exporter
+│   ├── src/components/QuizTab.tsx                # NEET CBT exam engine & score analyzer
+│   ├── src/components/DueTodayDashboard.tsx      # Cross-chapter daily review queue
+│   ├── src/components/AccountDashboardModal.tsx  # Aspirant profile & custom Gemini API key manager
+│   ├── src/lib/sm2.ts                            # Pure SM-2 mathematical implementation
+│   ├── src/lib/firebase.ts                       # Firestore operations & auth listeners
+│   └── src/lib/apiKeyStorage.ts                  # Local storage manager for user Gemini key
 │
 ├── Server (Node.js + Express)
-│   ├── server/apiRouter.ts                    # POST /api/generate & /api/health with CORS
-│   └── server/geminiService.ts                # Gemini SDK client, schema, & model fallback chain
+│   ├── server/apiRouter.ts                       # POST /api/generate & /api/validate-key
+│   └── server/geminiService.ts                   # Gemini SDK client, schema, & model fallback chain
+│
+├── Prompts & Sample Data
+│   ├── prompt/initial_project_prompt.txt         # Foundational project specifications & prompt
+│   ├── prompt/system_prompt.txt                  # Exact system prompt sent to Gemini models
+│   └── sample_chapter_output.json                # Complete sample study kit JSON for Cell Biology
 │
 └── Configuration
-    ├── firestore.rules                        # Attribute-based Firestore access rules
-    ├── firebase-blueprint.json                # Intermediate representation schema
-    └── vite.config.ts                         # Vite dev server + Express middleware mount
+    ├── firestore.rules                           # Attribute-based Firestore access rules
+    ├── firebase-blueprint.json                   # Intermediate representation schema
+    └── vite.config.ts                            # Vite dev server + Express middleware mount
 ```
 
 ---

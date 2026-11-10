@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserProfile } from '../lib/firebase';
-import { BookOpen, Calendar, Clock, LogIn, LogOut, Sparkles, User as UserIcon } from 'lucide-react';
+import { ChevronDown, Key, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   user: UserProfile | null;
@@ -10,6 +10,7 @@ interface NavbarProps {
   onNavigateDueToday: () => void;
   onOpenSettings: () => void;
   onOpenAuthModal: (mode?: 'signin' | 'signup') => void;
+  onOpenAccountDashboard: () => void;
   onSignOut: () => void;
 }
 
@@ -21,6 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigateDueToday,
   onOpenSettings,
   onOpenAuthModal,
+  onOpenAccountDashboard,
   onSignOut,
 }) => {
   return (
@@ -84,26 +86,33 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Zone 3: Authentication & User Actions */}
         <div className="flex items-center space-x-2">
           {user && !user.isAnonymous ? (
-            <div className="flex items-center space-x-2 text-xs">
-              <div className="flex items-center space-x-1.5 text-stone-600 pl-2">
+            <div className="flex items-center space-x-1.5 text-xs">
+              <button
+                type="button"
+                onClick={onOpenAccountDashboard}
+                className="flex items-center space-x-1.5 text-stone-700 pl-2 pr-2.5 py-1.5 rounded-lg hover:bg-stone-100 hover:text-stone-950 cursor-pointer transition select-none group border border-transparent hover:border-stone-200"
+                title="Account Profile & Custom API Key Dashboard"
+              >
                 {user.photoURL ? (
                   <img
                     src={user.photoURL}
                     alt={user.displayName || 'User'}
-                    className="w-6 h-6 rounded-full border border-stone-300"
+                    className="w-5 h-5 rounded-full border border-stone-300 object-cover"
                   />
                 ) : (
-                  <div className="w-6 h-6 rounded-full bg-stone-200 flex items-center justify-center text-[10px] font-medium text-stone-700">
+                  <div className="w-5 h-5 rounded-full bg-stone-900 text-stone-100 flex items-center justify-center text-[10px] font-semibold">
                     {(user.displayName?.[0] || user.email?.[0] || 'A').toUpperCase()}
                   </div>
                 )}
-                <span className="hidden sm:inline font-medium text-stone-800 max-w-[130px] truncate">
+                <span className="hidden sm:inline font-medium text-stone-800 max-w-[130px] truncate group-hover:text-stone-950">
                   {user.displayName || user.email?.split('@')[0]}
                 </span>
-              </div>
+                <ChevronDown className="w-3 h-3 text-stone-400 group-hover:text-stone-700 transition" />
+              </button>
+
               <button
                 onClick={onSignOut}
-                className="p-1.5 text-stone-400 hover:text-stone-700 rounded transition"
+                className="p-1.5 text-stone-400 hover:text-stone-700 rounded-md hover:bg-stone-100 transition"
                 title="Sign out"
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -111,6 +120,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           ) : (
             <div className="flex items-center space-x-1.5 sm:space-x-2">
+              <button
+                type="button"
+                onClick={onOpenAccountDashboard}
+                className="p-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-md transition"
+                title="API Key & Account Settings"
+              >
+                <Key className="w-3.5 h-3.5" />
+              </button>
               <button
                 onClick={() => onOpenAuthModal('signin')}
                 className="px-2.5 py-1.5 rounded-md text-xs font-medium text-stone-700 hover:text-stone-900 hover:bg-stone-100 transition"

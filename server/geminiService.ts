@@ -1,11 +1,11 @@
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import { StudyKitData, DepthSetting, SubjectType, ClassLevel } from '../src/types/neet';
 
-// Initialize Gemini client strictly with server environment variable
-const getGenAIClient = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
+// Initialize Gemini client with server environment variable or optional user key override
+export const getGenAIClient = (overrideApiKey?: string) => {
+  const apiKey = overrideApiKey?.trim() || process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not set in environment. Please configure it in your secrets.');
+    throw new Error('GEMINI_API_KEY is not set in environment. Please configure it in your secrets or provide your own key in the Account panel.');
   }
   return new GoogleGenAI({
     apiKey,
@@ -194,27 +194,34 @@ function getCountsForDepth(depth: DepthSetting) {
 }
 
 /**
- * Exponential backoff wrapper with retry for 429, 503, and transient network errors
+ * Exponential backoff wrapper with retry for 429 and transient network errors
  */
-async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 2, initialDelayMs = 1500): Promise<T> {
+async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 2, initialDelayMs = 1200): Promise<T> {
   let delay = initialDelayMs;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (err: any) {
+      const is503 =
+        err?.status === 503 ||
+        err?.message?.includes('503') ||
+        err?.message?.includes('high demand') ||
+        err?.message?.includes('UNAVAILABLE');
+
+      // If a model is experiencing high demand (503), fast-fail so candidateModels can instantly cascade to the next model
+      if (is503) {
+        throw err;
+      }
+
       const isRetryable =
         err?.status === 429 ||
-        err?.status === 503 ||
         err?.status === 500 ||
         err?.message?.includes('429') ||
-        err?.message?.includes('503') ||
         err?.message?.includes('RESOURCE_EXHAUSTED') ||
-        err?.message?.includes('high demand') ||
-        err?.message?.includes('UNAVAILABLE') ||
         err?.message?.includes('rate limit');
 
       if (isRetryable && attempt < maxRetries) {
-        console.warn(`[Gemini API] Transient condition (${err?.status || 'spikes/limits'}) encountered. Retrying in ${delay}ms (attempt ${attempt}/${maxRetries})...`);
+        console.warn(`[Gemini API] Rate limit/transient error encountered. Retrying in ${delay}ms (attempt ${attempt}/${maxRetries})...`);
         await new Promise((res) => setTimeout(res, delay));
         delay *= 1.5;
         continue;
@@ -231,10 +238,27 @@ export interface GenerateStudyKitParams {
   classLevel: ClassLevel;
   depth: DepthSetting;
   chapterTitleHint?: string;
+  customApiKey?: string;
+}
+
+export async function validateApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+  try {
+    const ai = getGenAIClient(apiKey);
+    const res = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite',
+      contents: 'ping',
+    });
+    if (res.text) {
+      return { valid: true };
+    }
+    return { valid: false, error: 'Empty response received from Gemini.' };
+  } catch (err: any) {
+    return { valid: false, error: err?.message || 'Failed to authenticate API key.' };
+  }
 }
 
 export async function generateStudyKit(params: GenerateStudyKitParams): Promise<StudyKitData> {
-  const ai = getGenAIClient();
+  const ai = getGenAIClient(params.customApiKey);
   const depthConfig = getCountsForDepth(params.depth);
 
   const promptText = `Analyze the provided NCERT Class ${params.classLevel} ${params.subject} textbook chapter PDF${

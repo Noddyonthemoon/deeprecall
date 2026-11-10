@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { generateStudyKit } from './geminiService';
+import { generateStudyKit, validateApiKey } from './geminiService';
 import { SubjectType, ClassLevel, DepthSetting } from '../src/types/neet';
 
 export const apiRouter = express.Router();
@@ -7,7 +7,7 @@ export const apiRouter = express.Router();
 apiRouter.use((_req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Gemini-API-Key');
   next();
 });
 
@@ -26,9 +26,24 @@ apiRouter.get('/health', (_req: Request, res: Response) => {
   });
 });
 
+apiRouter.post('/validate-key', async (req: Request, res: Response) => {
+  try {
+    const { apiKey } = req.body;
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length < 8) {
+      res.json({ valid: false, error: 'Please enter a valid Gemini API key.' });
+      return;
+    }
+    const result = await validateApiKey(apiKey.trim());
+    res.json(result);
+  } catch (error: any) {
+    res.json({ valid: false, error: error?.message || 'Failed to validate API key.' });
+  }
+});
+
 apiRouter.post('/generate', async (req: Request, res: Response) => {
   try {
-    const { pdfBase64, subject, classLevel, depth, chapterTitleHint } = req.body;
+    const { pdfBase64, subject, classLevel, depth, chapterTitleHint, apiKey } = req.body;
+    const customApiKey = (req.headers['x-gemini-api-key'] as string)?.trim() || apiKey?.trim() || undefined;
 
     if (!pdfBase64 || typeof pdfBase64 !== 'string') {
       res.status(400).json({ error: 'Missing or invalid pdfBase64 document in request payload.' });
@@ -44,7 +59,7 @@ apiRouter.post('/generate', async (req: Request, res: Response) => {
     const validDepths: DepthSetting[] = ['quick', 'standard', 'deep'];
     const chosenDepth: DepthSetting = validDepths.includes(depth) ? depth : 'standard';
 
-    console.log(`[API /generate] Processing chapter generation: ${chosenSubject} Class ${chosenClass} (${chosenDepth} depth)`);
+    console.log(`[API /generate] Processing chapter generation: ${chosenSubject} Class ${chosenClass} (${chosenDepth} depth) - Key source: ${customApiKey ? 'User Provided' : 'Server Default'}`);
 
     const studyKit = await generateStudyKit({
       pdfBase64,
@@ -52,6 +67,7 @@ apiRouter.post('/generate', async (req: Request, res: Response) => {
       classLevel: chosenClass,
       depth: chosenDepth,
       chapterTitleHint,
+      customApiKey,
     });
 
     res.json({

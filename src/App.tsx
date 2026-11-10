@@ -28,6 +28,8 @@ import { ChapterDashboard } from './components/ChapterDashboard';
 import { DueTodayDashboard } from './components/DueTodayDashboard';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal } from './components/AuthModal';
+import { AccountDashboardModal } from './components/AccountDashboardModal';
+import { getCustomApiKey } from './lib/apiKeyStorage';
 import { ExternalLink, X, AlertCircle } from 'lucide-react';
 
 export default function App() {
@@ -49,6 +51,7 @@ export default function App() {
   // Modals & alerts
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAccountDashboardOpen, setIsAccountDashboardOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signin');
   const [errorMessage, setErrorMessage] = useState<{ text: string; isRateLimit?: boolean } | null>(
     null
@@ -132,15 +135,20 @@ export default function App() {
     setErrorMessage(null);
 
     try {
+      const customKey = getCustomApiKey();
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(customKey ? { 'X-Gemini-API-Key': customKey } : {}),
+        },
         body: JSON.stringify({
           pdfBase64: params.pdfBase64,
           subject: params.subject,
           classLevel: params.classLevel,
           depth: params.depth,
           chapterTitleHint: params.chapterTitleHint,
+          apiKey: customKey || undefined,
         }),
       });
 
@@ -277,6 +285,7 @@ export default function App() {
         onNavigateDueToday={() => setActiveView('dueToday')}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenAuthModal={handleOpenAuthModal}
+        onOpenAccountDashboard={() => setIsAccountDashboardOpen(true)}
         onSignOut={handleSignOut}
       />
 
@@ -389,6 +398,18 @@ export default function App() {
         onClose={() => setIsAuthModalOpen(false)}
         onAuthSuccess={handleAuthSuccess}
         initialMode={authModalMode}
+      />
+
+      {/* Account Profile & Custom API Key Dashboard */}
+      <AccountDashboardModal
+        isOpen={isAccountDashboardOpen}
+        onClose={() => setIsAccountDashboardOpen(false)}
+        user={user}
+        onSignOut={handleSignOut}
+        onOpenAuthModal={() => {
+          setIsAccountDashboardOpen(false);
+          handleOpenAuthModal('signin');
+        }}
       />
     </div>
   );
